@@ -4,4 +4,3 @@ torch
 torchvision
 ipykernel
 opencv-python
-joblib
