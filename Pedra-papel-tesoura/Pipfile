@@ -10,6 +10,7 @@ torch = "*"
 torchvision = "*"
 ipykernel = "*"
 opencv-python = "*"
+joblib = "*"
 
 [dev-packages]
 
