@@ -21,11 +21,20 @@ def main():
     logger = None
     
     # Check system requirements and paths
-    print("\n1. System Check")
+    print("\n1. GPU-Optimized System Check")
     print("-" * 30)
     
-    # Detect device (CPU/CUDA)
+    # Detect device (CPU/CUDA) and setup optimizations
     device = Config.get_device()
+    Config.setup_gpu_optimizations()
+    
+    # Mostrar configurações otimizadas
+    print(f"\n🚀 Optimized Training Configuration:")
+    print(f"   - Batch Size: {Config.BATCH_SIZE}")
+    print(f"   - Workers: {Config.NUM_WORKERS}")
+    print(f"   - Pin Memory: {Config.PIN_MEMORY}")
+    print(f"   - Prefetch Factor: {Config.PREFETCH_FACTOR}")
+    print(f"   - Persistent Workers: {Config.PERSISTENT_WORKERS}")
     
     # Check if required paths exist
     if not Config.check_paths():

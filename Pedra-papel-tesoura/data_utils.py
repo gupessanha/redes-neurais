@@ -150,8 +150,8 @@ class DataLoader:
         return validation_images
     
     def create_data_loaders(self, image_tensors, targets):
-        """Create training and validation data loaders"""
-        print("Creating data loaders...")
+        """Create optimized training and validation data loaders for GPU"""
+        print("🔄 Creating optimized data loaders...")
         dataset = RPSDataset(image_tensors, targets)
         
         # Split data into training and validation
@@ -159,18 +159,38 @@ class DataLoader:
         train_dataset = torch.utils.data.Subset(dataset, indices[:-Config.VALIDATION_SPLIT])
         valid_dataset = torch.utils.data.Subset(dataset, indices[-Config.VALIDATION_SPLIT:])
         
+        # Configurar workers baseado na disponibilidade
+        num_workers = Config.NUM_WORKERS if Config.NUM_WORKERS > 0 else 0
+        
+        # DataLoader de treinamento otimizado
         train_loader = torch.utils.data.DataLoader(
             train_dataset, 
             batch_size=Config.BATCH_SIZE, 
             shuffle=True, 
-            collate_fn=lambda x: tuple(zip(*x))
+            collate_fn=lambda x: tuple(zip(*x)),
+            num_workers=num_workers,
+            pin_memory=Config.PIN_MEMORY and torch.cuda.is_available(),
+            persistent_workers=Config.PERSISTENT_WORKERS and num_workers > 0,
+            prefetch_factor=Config.PREFETCH_FACTOR if num_workers > 0 else 2,
+            drop_last=True  # Evita batches pequenos que podem causar problemas
         )
+        
+        # DataLoader de validação otimizado
         valid_loader = torch.utils.data.DataLoader(
             valid_dataset, 
             batch_size=Config.BATCH_SIZE, 
             shuffle=False, 
-            collate_fn=lambda x: tuple(zip(*x))
+            collate_fn=lambda x: tuple(zip(*x)),
+            num_workers=num_workers,
+            pin_memory=Config.PIN_MEMORY and torch.cuda.is_available(),
+            persistent_workers=Config.PERSISTENT_WORKERS and num_workers > 0,
+            prefetch_factor=Config.PREFETCH_FACTOR if num_workers > 0 else 2
         )
+        
+        print(f"📊 Training batches: {len(train_loader)} (batch_size={Config.BATCH_SIZE})")
+        print(f"📊 Validation batches: {len(valid_loader)}")
+        print(f"🔧 Workers: {num_workers}, Pin Memory: {Config.PIN_MEMORY}")
+        print(f"🚀 Persistent Workers: {Config.PERSISTENT_WORKERS}, Prefetch: {Config.PREFETCH_FACTOR}")
         
         return train_loader, valid_loader
     
