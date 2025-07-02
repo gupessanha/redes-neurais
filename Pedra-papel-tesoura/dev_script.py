@@ -1,378 +1,194 @@
-import pandas as pd
-import torch
-from torch.utils.data import DataLoader, Dataset
-import torchvision
-from torchvision.models.detection import fasterrcnn_resnet50_fpn
-from torchvision.datasets import ImageFolder
-from torchvision import transforms
-import torchvision.transforms as T
-from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
-import matplotlib.pyplot as plt
-import numpy as np
-import cv2
+"""
+Main script for Rock Paper Scissors object detection
+Modularized version with CPU/CUDA support and validation data integration
+"""
 import os
-from collections import defaultdict
-import joblib
-import matplotlib.patches as patches
-from PIL import Image
-import time
+from config import Config
+from data_utils import DataLoader
+from model_utils import ModelManager
+from training_utils import Trainer, Evaluator
+from inference_utils import InferenceEngine, WebcamDetection
+from logging_utils import ExecutionLogger
 
 def main():
     """Main function for Rock Paper Scissors object detection"""
     
-    # Load and examine the dataset
-    print("Loading dataset...")
-    df_image_info = pd.read_csv('./test/_annotations.csv')
-    print(f"Dataset shape: {df_image_info.shape}")
-    print(df_image_info.head())
-    print(df_image_info.describe())
+    print("="*60)
+    print("ROCK PAPER SCISSORS DETECTION SYSTEM")
+    print("="*60)
     
-    # Data Quality Check
-    print("\n" + "="*50)
-    print("DATA QUALITY CHECK")
-    print("="*50)
+    # Initialize logger - will be updated once we know if training or inference
+    logger = None
     
-    # Check for duplicate rows
-    duplicate_rows = df_image_info.duplicated()
-    print(f"Number of duplicate rows: {duplicate_rows.sum()}")
+    # Check system requirements and paths
+    print("\n1. System Check")
+    print("-" * 30)
     
-    if duplicate_rows.sum() > 0:
-        print("\nDuplicate rows found:")
-        print(df_image_info[duplicate_rows])
-    else:
-        print("No duplicate rows found.")
+    # Detect device (CPU/CUDA)
+    device = Config.get_device()
     
-    # Check for duplicate filenames
-    duplicate_filenames = df_image_info['filename'].duplicated()
-    print(f"\nNumber of duplicate filenames: {duplicate_filenames.sum()}")
+    # Check if required paths exist
+    if not Config.check_paths():
+        print("Please ensure all required directories exist before continuing.")
+        return
     
-    if duplicate_filenames.sum() > 0:
-        print("\nDuplicate filenames:")
-        print(df_image_info[duplicate_filenames]['filename'].values)
+    # Initialize components
+    data_loader = DataLoader()
+    model_manager = ModelManager(device)
     
-    # Check for any missing values
-    print(f"\nMissing values per column:")
-    print(df_image_info.isnull().sum())
+    print("\n2. Data Loading and Analysis")
+    print("-" * 30)
     
-    # Check for invalid bounding box coordinates
-    invalid_boxes = df_image_info[(df_image_info['xmin'] >= df_image_info['xmax']) | 
-                                 (df_image_info['ymin'] >= df_image_info['ymax'])]
-    print(f"\nNumber of invalid bounding boxes: {len(invalid_boxes)}")
+    # Load and analyze dataset
+    df_image_info = data_loader.load_annotations(Config.TRAIN_DATA_PATH)
+    data_loader.quality_check(df_image_info)
     
-    if len(invalid_boxes) > 0:
-        print("Invalid bounding boxes found:")
-        print(invalid_boxes)
-    
-    # Visualize class distribution
-    print("\nVisualizing class distribution...")
-    plt.style.use('_mpl-gallery')
-    class_counts = df_image_info['class'].value_counts()
-    
-    plt.figure(figsize=(8, 6))
-    plt.bar(class_counts.index, class_counts.values, alpha=0.7)
-    plt.xlabel('Class')
-    plt.ylabel('Count')
-    plt.title('Distribution of Rock, Paper, Scissors Classes')
-    plt.grid(True, alpha=0.3)
-    # plt.show()
+    print("\n3. Model Setup")
+    print("-" * 30)
     
     # Model setup - Choose to load existing model or train new one
-    model_filename = 'trained_model.joblib'
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    load_existing, model_path = model_manager.get_model_choice(Config.MODEL_FILENAME)
     
-    if os.path.exists(model_filename):
+    if load_existing:
+        # Initialize logger for inference
+        logger = ExecutionLogger(num_epochs=None)
+        logger.log_data_info(df_image_info)
+        logger.log_model_info("loaded", model_path)
+        
         # Load existing model
-        print(f"\nFound existing model at {model_filename}")
-        choice = input("Do you want to load the existing model? (y/n): ").lower().strip()
-        
-        if choice == 'y' or choice == 'yes':
-            print("Loading existing model...")
-            model = joblib.load(model_filename)
-            model = model.to(device)
-            print("Model loaded successfully!")
-        else:
-            # Train new model
-            model = train_new_model(df_image_info, device, model_filename)
+        model = model_manager.load_model(model_path)
     else:
-        # No existing model found, train new one
-        print(f"\nNo existing model found at {model_filename}")
-        print("Training new model...")
-        model = train_new_model(df_image_info, device, model_filename)
+        # Initialize logger for training
+        logger = ExecutionLogger(num_epochs=Config.NUM_EPOCHS)
+        logger.log_data_info(df_image_info)
+        logger.log_model_info("trained", model_path)
+        
+        # Train new model
+        model = train_new_model(data_loader, df_image_info, model_manager, device, model_path, logger)
     
-    # Start real-time detection
-    print("\nStarting real-time webcam detection...")
-    class_names = ['Background', 'Rock', 'Paper', 'Scissors']
-    # webcam_detection(model, device, class_names)
+    # Apply device-specific optimizations
+    model = model_manager.optimize_for_device(model)
+    
+    print("\n4. Choose Operation Mode")
+    print("-" * 30)
+    print("1. Run inference on validation images")
+    print("2. Start webcam detection") 
+    print("3. Both")
+    
+    while True:
+        choice = input("\nEnter your choice (1/2/3): ").strip()
+        if choice in ['1', '2', '3']:
+            break
+        print("Please enter 1, 2, or 3.")
+    
+    validation_results = None
+    webcam_used = False
+    
+    if choice in ['1', '3']:
+        # Run validation inference
+        print("\n5. Validation Inference")
+        print("-" * 30)
+        validation_results = run_validation_inference(model, device, logger)
+    
+    if choice in ['2', '3']:
+        # Start webcam detection
+        print("\n6. Webcam Detection")
+        print("-" * 30)
+        webcam_used = run_webcam_detection(model, device)
+    
+    # Log inference results and save all logs
+    logger.log_inference_results(validation_results, webcam_used)
+    logger.save_logs()
+    
+    print("\nProgram completed successfully!")
 
-
-def train_new_model(df_image_info, device, model_filename):
+def train_new_model(data_loader, df_image_info, model_manager, device, model_path, logger):
     """Train and save a new model"""
-    # Load and process images
-    print("\nLoading and processing images...")
-    transform = T.Compose([T.ToTensor()])
+    print("\nTraining new model...")
     
-    image_tensors = []
-    targets = []
+    # Start training timer
+    logger.start_training_timer()
     
-    for i in range(len(df_image_info)):
-        image_path = f"./test/{df_image_info.loc[i, 'filename']}"
-        img = cv2.imread(image_path)
-        
-        if img is not None:
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            
-            x1 = df_image_info.loc[i, 'xmin']
-            y1 = df_image_info.loc[i, 'ymin']
-            x2 = df_image_info.loc[i, 'xmax']
-            y2 = df_image_info.loc[i, 'ymax']
-            
-            boxes = [[x1, y1, x2, y2]]
-            labels = [1]  # Placeholder label
-            
-            target = {
-                "boxes": torch.tensor(boxes, dtype=torch.float32),
-                "labels": torch.tensor(labels, dtype=torch.int64)
-            }
-            
-            img_tensor = transform(img)
-            image_tensors.append(img_tensor)
-            targets.append(target)
+    # Load training data
+    image_tensors, targets = data_loader.load_training_data(df_image_info, Config.TRAIN_IMAGES_PATH)
     
-    print(f"Loaded {len(image_tensors)} images successfully")
+    # Create data loaders
+    train_loader, valid_loader = data_loader.create_data_loaders(image_tensors, targets)
     
-    # Setup model
-    print("\nSetting up model...")
-    model = fasterrcnn_resnet50_fpn(weights='DEFAULT')
-    num_classes = 4  # 3 classes (Rock, Paper, Scissors) + background
+    # Create model
+    model = model_manager.create_model()
     
-    in_features = model.roi_heads.box_predictor.cls_score.in_features
-    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+    # Setup optimizer
+    optimizer = model_manager.setup_optimizer(model)
     
-    # Create dataset and data loaders
-    print("Creating data loaders...")
-    dataset = SimpleDataset(image_tensors, targets)
+    # Create trainer and train
+    trainer = Trainer(model, optimizer, device, logger)
+    trainer.train_model(train_loader, valid_loader)
     
-    indices = torch.randperm(len(dataset)).tolist()
-    train_dataset = torch.utils.data.Subset(dataset, indices[:-50])
-    valid_dataset = torch.utils.data.Subset(dataset, indices[-50:])
+    # Log training completion
+    logger.log_training_completion()
     
-    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, 
-                             collate_fn=lambda x: tuple(zip(*x)))
-    valid_loader = DataLoader(valid_dataset, batch_size=4, shuffle=False, 
-                             collate_fn=lambda x: tuple(zip(*x)))
-    
-    # Training
-    print("\nStarting training...")
-    num_epochs = 30
-    learning_rate = 0.005
-    
-    model = model.to(device)
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
-    
-    print(f"Training on device: {device}")
-    for epoch in range(num_epochs):
-        train_loss = train_one_epoch(model, optimizer, train_loader, device)
-        val_loss = validate(model, valid_loader, device)
-        
-        print(f"Epoch {epoch+1}/{num_epochs}")
-        print(f"Training Loss: {train_loss:.4f}")
-        print(f"Validation Loss: {val_loss:.4f}")
-        print("-" * 50)
-    
-    # Save model
-    print("\nSaving model...")
-    joblib.dump(model, model_filename)
-    print(f"Model saved to {model_filename}")
+    # Save model using PyTorch format in the log folder
+    log_folder = logger.get_log_folder()
+    model = model_manager.save_model(model, model_path, log_folder)
     
     # Evaluate model
-    print("\nEvaluating model...")
-    evaluate_model(model, valid_loader, device)
+    evaluator = Evaluator(device)
+    metrics = evaluator.evaluate_model(model, valid_loader)
+    
+    # Log evaluation metrics
+    logger.log_evaluation_metrics(metrics)
     
     return model
 
-
-
-class SimpleDataset(Dataset):
-    def __init__(self, images, targets):
-        self.images = images
-        self.targets = targets
+def run_validation_inference(model, device, logger):
+    """Run inference on validation images and evaluate against ground truth"""
+    data_loader = DataLoader()
+    validation_images = data_loader.load_validation_images(Config.VALIDATION_IMAGES_PATH)
     
-    def __len__(self):
-        return len(self.images)
+    if not validation_images:
+        print("No validation images found!")
+        return None
     
-    def __getitem__(self, idx):
-        return self.images[idx], self.targets[idx]
-
-
-def train_one_epoch(model, optimizer, data_loader, device):
-    """Train model for one epoch"""
-    model.train()
-    total_loss = 0
+    # Run basic inference
+    inference_engine = InferenceEngine(model, device)
+    results = inference_engine.predict_validation_images(validation_images)
     
-    for images, targets in data_loader:
-        images = [image.to(device) for image in images]
-        targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
+    print(f"\nValidation inference completed on {len(results)} images.")
+    
+    # Evaluate against ground truth if annotations file exists
+    test_annotations_path = os.path.join(Config.VALIDATION_IMAGES_PATH, '_annotations.csv')
+    if os.path.exists(test_annotations_path):
+        print(f"\nFound ground truth annotations at {test_annotations_path}")
+        print("Running evaluation against ground truth...")
         
-        optimizer.zero_grad()
-        loss_dict = model(images, targets)
-        losses = sum(loss for loss in loss_dict.values())
-        losses.backward()
-        optimizer.step()
+        from inference_utils import ModelEvaluator
+        evaluator = ModelEvaluator(model, device)
+        evaluation_results = evaluator.evaluate_model(Config.VALIDATION_IMAGES_PATH, test_annotations_path)
         
-        total_loss += losses.item()
-    
-    return total_loss / len(data_loader)
-
-
-def validate(model, data_loader, device):
-    """Validate model"""
-    model.eval()
-    total_loss = 0
-    
-    with torch.no_grad():
-        for images, targets in data_loader:
-            images = [image.to(device) for image in images]
-            targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
-
-            model.train()
-            loss_dict = model(images, targets)
-            model.eval()
-
-            losses = sum(loss for loss in loss_dict.values())
-            total_loss += losses.item()
-    
-    return total_loss / len(data_loader)
-
-
-def calculate_iou(box1, box2):
-    """Calculate Intersection over Union between two bounding boxes"""
-    x1 = max(box1[0], box2[0])
-    y1 = max(box1[1], box2[1])
-    x2 = min(box1[2], box2[2])
-    y2 = min(box1[3], box2[3])
-    
-    intersection = max(0, x2 - x1) * max(0, y2 - y1)
-    box1_area = (box1[2] - box1[0]) * (box1[3] - box1[1])
-    box2_area = (box2[2] - box2[0]) * (box2[3] - box2[1])
-    union = box1_area + box2_area - intersection
-    
-    return intersection / union if union > 0 else 0
-
-
-def evaluate_model(model, valid_loader, device):
-    """Evaluate the trained model"""
-    model.eval()
-    
-    all_predictions = []
-    all_targets = []
-    
-    with torch.no_grad():
-        for images, targets in valid_loader:
-            images = [image.to(device) for image in images]
-            targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
-            
-            predictions = model(images)
-            all_predictions.extend(predictions)
-            all_targets.extend(targets)
-    
-    # Calculate metrics
-    iou_thresholds = [0.5, 0.75]
-    class_names = ['Rock', 'Paper', 'Scissors']
-    metrics = defaultdict(list)
-    
-    for pred, target in zip(all_predictions, all_targets):
-        pred_boxes = pred['boxes'].cpu().numpy()
-        pred_scores = pred['scores'].cpu().numpy()
-        pred_labels = pred['labels'].cpu().numpy()
+        if evaluation_results:
+            # Log evaluation results
+            logger.log_evaluation_results(evaluation_results)
         
-        target_boxes = target['boxes'].cpu().numpy()
-        target_labels = target['labels'].cpu().numpy()
-        
-        for i, (pred_box, pred_score, pred_label) in enumerate(zip(pred_boxes, pred_scores, pred_labels)):
-            best_iou = 0
-            best_match = None
-            
-            for j, (target_box, target_label) in enumerate(zip(target_boxes, target_labels)):
-                if pred_label == target_label:
-                    iou = calculate_iou(pred_box, target_box)
-                    if iou > best_iou:
-                        best_iou = iou
-                        best_match = j
-            
-            for threshold in iou_thresholds:
-                if best_iou >= threshold:
-                    metrics[f'correct_{threshold}'].append(1)
-                else:
-                    metrics[f'correct_{threshold}'].append(0)
-            
-            metrics['iou_scores'].append(best_iou)
-    
-    # Print evaluation results
-    print("Model Evaluation Results:")
-    print("=" * 50)
-    
-    avg_iou = np.mean(metrics['iou_scores'])
-    print(f"Average IoU: {avg_iou:.4f}")
-    
-    for threshold in iou_thresholds:
-        precision = np.mean(metrics[f'correct_{threshold}'])
-        print(f"Precision at IoU {threshold}: {precision:.4f}")
+        return {'inference_results': results, 'evaluation_results': evaluation_results}
+    else:
+        print(f"\nNo ground truth annotations found at {test_annotations_path}")
+        print("Skipping evaluation against ground truth.")
+        return {'inference_results': results, 'evaluation_results': None}
 
-
-def get_transform(train):
-    """Get image transforms for training or validation"""
-    transform_list = [
-        transforms.Resize((800, 800)),
-        transforms.ToTensor(),
-    ]
-    if train:
-        transform_list.append(transforms.RandomHorizontalFlip(0.5))
-    return transforms.Compose(transform_list)
-
-
-# def webcam_detection(model, device, class_names):
-#     """Real-time object detection using webcam"""
-#     cap = cv2.VideoCapture(0)
+def run_webcam_detection(model, device):
+    """Run real-time webcam detection"""
+    webcam_detector = WebcamDetection(model, device)
     
-#     if not cap.isOpened():
-#         print("Error: Could not open webcam")
-#         return
+    # Test webcam access first
+    if not webcam_detector.test_webcam_access():
+        print("Webcam not accessible. Skipping webcam detection.")
+        return False
     
-#     print("Webcam started. Press 'q' to quit.")
-    
-#     while True:
-#         ret, frame = cap.read()
-#         if not ret:
-#             print("Error: Could not read frame")
-#             break
-        
-#         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-#         pil_image = Image.fromarray(frame_rgb)
-        
-#         transform = get_transform(train=False)
-#         image_tensor = transform(pil_image).unsqueeze(0)
-        
-#         with torch.no_grad():
-#             prediction = model([image_tensor.to(device)])[0]
-        
-#         for box, score, label in zip(prediction['boxes'], prediction['scores'], prediction['labels']):
-#             if score > 0.5:
-#                 x1, y1, x2, y2 = box.cpu().numpy().astype(int)
-                
-#                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                
-#                 label_text = f"{class_names[label]} ({score:.2f})"
-#                 cv2.putText(frame, label_text, (x1, y1-10), 
-#                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-        
-#         cv2.imshow('Rock Paper Scissors Detection', frame)
-        
-#         if cv2.waitKey(1) & 0xFF == ord('q'):
-#             break
-    
-#     cap.release()
-#     cv2.destroyAllWindows()
+    webcam_detector.run_webcam_detection()
+    return True
 
 
 if __name__ == "__main__":
     main()
+

@@ -1,0 +1,74 @@
+{
+  "execution_info": {
+    "start_time": "2025-07-01T23:58:52.823393",
+    "timestamp": "20250701_235852",
+    "num_epochs": null,
+    "execution_type": "inference",
+    "end_time": "2025-07-01T23:59:30.532456"
+  },
+  "system_info": {
+    "device_type": "cpu",
+    "pytorch_version": "2.7.1+cpu",
+    "cuda_available": false,
+    "num_classes": 4,
+    "class_names": [
+      "Background",
+      "Rock",
+      "Paper",
+      "Scissors"
+    ],
+    "learning_rate": 0.005,
+    "momentum": 0.9,
+    "batch_size": 4,
+    "confidence_threshold": 0.5,
+    "iou_thresholds": [
+      0.5,
+      0.75
+    ],
+    "image_size": [
+      800,
+      800
+    ]
+  },
+  "data_info": {
+    "total_annotations": 204,
+    "unique_images": 186,
+    "class_distribution": {
+      "Paper": 72,
+      "Scissors": 67,
+      "Rock": 65
+    },
+    "duplicate_rows": 0,
+    "duplicate_filenames": 18,
+    "missing_values": {
+      "filename": 0,
+      "width": 0,
+      "height": 0,
+      "class": 0,
+      "xmin": 0,
+      "ymin": 0,
+      "xmax": 0,
+      "ymax": 0
+    }
+  },
+  "model_info": {
+    "action": "loaded",
+    "model_path": "trained_model.pth",
+    "model_architecture": "Faster R-CNN ResNet50 FPN"
+  },
+  "training_metrics": {},
+  "validation_metrics": {},
+  "test_metrics": {},
+  "inference_results": {
+    "webcam_detection_used": false,
+    "validation_inference_completed": true,
+    "num_validation_images_processed": 11,
+    "validation_results_summary": {
+      "successful_predictions": 11
+    }
+  },
+  "timing": {
+    "total_execution_time_seconds": 37.709672689437866,
+    "total_execution_time_formatted": "37s"
+  }
+}

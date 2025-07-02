@@ -1,0 +1,41 @@
+{
+  "execution_info": {
+    "start_time": "2025-07-01T23:47:16.267855",
+    "timestamp": "20250701_234716",
+    "num_epochs": null,
+    "execution_type": "inference",
+    "end_time": "2025-07-01T23:47:51.674542"
+  },
+  "system_info": {
+    "device_type": "cpu",
+    "pytorch_version": "2.7.1+cpu",
+    "cuda_available": false,
+    "num_classes": 4,
+    "class_names": [
+      "Background",
+      "Rock",
+      "Paper",
+      "Scissors"
+    ],
+    "learning_rate": 0.005,
+    "momentum": 0.9,
+    "batch_size": 4,
+    "confidence_threshold": 0.5,
+    "iou_thresholds": [
+      0.5,
+      0.75
+    ],
+    "image_size": [
+      800,
+      800
+    ]
+  },
+  "data_info": {
+    "total_annotations": 204,
+    "unique_images": 186,
+    "class_distribution": {
+      "Paper": 72,
+      "Scissors": 67,
+      "Rock": 65
+    },
+    "duplicate_rows": 

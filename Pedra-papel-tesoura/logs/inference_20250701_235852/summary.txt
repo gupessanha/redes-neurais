@@ -1,0 +1,30 @@
+============================================================
+ROCK PAPER SCISSORS DETECTION - EXECUTION SUMMARY
+============================================================
+
+EXECUTION INFORMATION:
+------------------------------
+Start Time: 2025-07-01T23:58:52.823393
+End Time: 2025-07-01T23:59:30.532456
+Execution Type: inference
+Total Execution Time: 37s
+
+SYSTEM INFORMATION:
+------------------------------
+Device: CPU
+PyTorch Version: 2.7.1+cpu
+CUDA Available: False
+
+DATASET INFORMATION:
+------------------------------
+Total Annotations: 204
+Unique Images: 186
+Class Distribution:
+  Paper: 72
+  Scissors: 67
+  Rock: 65
+
+INFERENCE RESULTS:
+------------------------------
+Validation Images Processed: 11
+
